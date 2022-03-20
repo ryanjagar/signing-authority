@@ -3,7 +3,7 @@
     <h1>Signing Authority App Home</h1>
     <p></p>
     <v-card class="mt-5" color="#fff2d5">
-      <v-card-title>Find a Signing Authority</v-card-title>
+      <v-card-title>Find an Employee</v-card-title>
       <v-card-text>
         <v-text-field
           dense
@@ -13,7 +13,7 @@
           append-icon="mdi-magnify"
           @click:append="doSearch"
           @keydown="searchKeyUp"
-          hint="Enter a Name, YNET ID or account code"
+          hint="Enter a Name, YNET ID or Employee ID"
           v-model="search"
         ></v-text-field>
         <router-link to="/search">Advanced search</router-link>
@@ -55,13 +55,14 @@
           hide-default-footer
           :headers="[
             { text: '', value: 'action', width: '40px' },
-            { text: 'Name', value: 'name' },
+            { text: 'Name', value: 'display_name' },
             { text: 'Title', value: 'title' },
             { text: 'Department', value: 'department' },
           ]"
           :items="searchResults"
           :items-per-page="-1"
           @click:row="selectAuthority"
+          class="clickable-row"
         >
           <template v-slot:item.action="{ item }">
             <v-btn
@@ -79,9 +80,7 @@
       <v-divider></v-divider>
 
       <v-card class="default my-4 mx-5" v-if="selectedAuthority">
-        <v-card-title
-          >Authority for {{selectedAuthority.name }}</v-card-title
-        >
+        <v-card-title>Authority for {{ selectedAuthority.name }}</v-card-title>
         <v-card-text>
           <div v-for="(app, i) of signingAuthorities" :key="i">
             <v-list-item
@@ -109,6 +108,9 @@
 </template>
 
 <script>
+import {EMPLOYEE_URL} from "../urls"
+import axios from "axios";
+
 export default {
   name: "Home",
   data: () => ({
@@ -129,29 +131,25 @@ export default {
       let cleanSearch = this.search.trim().toLowerCase();
       if (cleanSearch.length == 0) return;
       // hack to show search funtcion
-      this.searchResults = [{name: "Jane Smith"}, {name: "Alex Jones"}]
-      this.drawer=true
-      this.resultCount = this.searchResults.length
-      // axios
-      //   .post(`${STUDENT_SEARCH_URL}`, { terms: cleanSearch })
-      //   .then((resp) => {
-      //     this.searchResults = resp.data.data;
-      //     this.drawer = true;
-      //     this.resultCount = resp.data.meta.item_count;
-      //   })
-      //   .catch((err) => {
-      //     this.$emit("showError", err);
-      //   });
+      this.searchResults = [{ name: "Jane Smith" }, { name: "Alex Jones" }];
+      this.drawer = true;
+      this.resultCount = this.searchResults.length;
+
+      axios
+        .post(`${EMPLOYEE_URL}/search`, { terms: cleanSearch })
+        .then((resp) => {
+          this.searchResults = resp.data.data;
+          this.drawer = true;
+          this.resultCount = resp.data.meta.item_count;
+        })
+        .catch((err) => {
+          this.$emit("showError", err);
+        });
     },
     selectAuthority(item) {
       this.selectedAuthority = item;
-    //   axios
-    //     .get(`${STUDENT_URL}/${item.student_id}/applications`)
-    //     .then((resp) => {
-    //       this.studentApplications = resp.data.data;
-    //     })
-    //     .catch((err) => console.log(err));
-   },
+      this.$router.push(`/employee/${item._id}`);
+    },
   },
 };
 </script>

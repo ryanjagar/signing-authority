@@ -1,24 +1,23 @@
 import { StoredFile } from "../data/models";
 import { FileStore } from "./file-store";
-import { Db, MongoClient, GridFSBucket, ObjectId } from "mongodb";
-import { MONGO_DB } from "../config";
+import { Db, Filter, GridFSBucket, ObjectId } from "mongodb";
 import { Readable } from "stream"
+
 
 export class MongoFileStore implements FileStore {
 
-    client: MongoClient;
+    readonly FILE_COLLECTION_NAME = "SAA-FILES";
     db: Db
     bucket: GridFSBucket;
 
-    constructor(client: MongoClient) {
-        this.client = client;
-        this.db = this.client.db(MONGO_DB);
-        this.bucket = new GridFSBucket(this.db)
+    constructor(db: Db) {
+        this.db = db;
+        this.bucket = new GridFSBucket(this.db, { bucketName: this.FILE_COLLECTION_NAME })
     }
 
-    async getAllFiles(): Promise<StoredFile[]> {
+    async getFiles(filter: Filter<any>): Promise<StoredFile[]> {
         let allFiles = new Array<any>();
-        const cursor = this.bucket.find({});
+        const cursor = this.bucket.find(filter);
 
         await cursor.forEach(doc => {
             let mimeType = doc.metadata ? doc.metadata.mimeType : "";
@@ -28,7 +27,7 @@ export class MongoFileStore implements FileStore {
                 fileSize: doc.length,
                 filename: doc.filename,
                 content: Buffer.from(''),
-                uploadedBy: doc.metadata,
+                uploadedBy: doc.metadata?.uploadedBy,
                 mimeType
             }
 
@@ -44,53 +43,38 @@ export class MongoFileStore implements FileStore {
         let storedFile: StoredFile = {
             fileSize: 0,
             filename: "",
-            content: Buffer.from(''),
-            mimeType: ""
-        }
+            mimeType: "",
+            content: Buffer.from([])
+        };
 
         await cursor.forEach(doc => {
             let mimeType = doc.metadata ? doc.metadata.mimeType : "";
-
-            storedFile.id = doc._id.toString();
             storedFile.fileSize = doc.length;
             storedFile.filename = doc.filename;
             storedFile.mimeType = mimeType
         });
 
-        return Promise.resolve(storedFile)
+        return new Promise((resolve, reject) => {
+            let download = this.bucket.openDownloadStream(new ObjectId(key));
+            let buffer = new Array();
+
+            download.on('end', async (en: Buffer) => {
+                storedFile.content = Buffer.concat(buffer)
+                resolve(storedFile)
+            }).on("data", (chunk: Buffer) => {
+                buffer.push(chunk);
+            });
+        });
     }
 
     putFile(file: StoredFile): Promise<StoredFile> {
         let stream = Readable.from(file.content);
         let mongoResponse = stream.pipe(this.bucket.openUploadStream(file.filename, { metadata: { mimeType: file.mimeType, uploadedBy: file.uploadedBy } }));
-        file.id = mongoResponse.id.toString();
+        file._id = mongoResponse.id;
         return Promise.resolve(file);
     }
 
     removeFile(key: string): Promise<any> {
-        throw new Error("Method not implemented.");
+        return this.bucket.delete(new ObjectId(key));
     }
-
-    async uploadedBy(key: string): Promise<StoredFile> {
-        const cursor = this.bucket.find({ 'metadata.uploadedBy': key });
-
-        let storedFile: StoredFile = {
-            fileSize: 0,
-            filename: "",
-            content: Buffer.from(''),
-            mimeType: ""
-        }
-
-        await cursor.forEach(doc => {
-            let mimeType = doc.metadata ? doc.metadata.mimeType : "";
-
-            storedFile.id = doc._id.toString();
-            storedFile.fileSize = doc.length;
-            storedFile.filename = doc.filename;
-            storedFile.mimeType = mimeType
-        });
-
-        return Promise.resolve(storedFile)
-    }
-
 }
